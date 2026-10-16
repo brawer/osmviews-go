@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2026 Sascha Brawer <sascha@brawer.ch>
+# SPDX-License-Identifier: MIT
+
+# The dataset for the real-data tests (see CONTRIBUTING.md).
+/osmviews.tiff
+
+# Fuzzing failures land here; commit the ones worth keeping as regressions.
+/testdata/fuzz/*/
+!/testdata/fuzz/FuzzNew/
+!/testdata/fuzz/FuzzProject/
+
+# Test binaries from "go test -c" or profiling.
+*.test

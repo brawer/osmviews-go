@@ -1,0 +1,72 @@
+# SPDX-FileCopyrightText: 2026 Sascha Brawer <sascha@brawer.ch>
+# SPDX-License-Identifier: MIT
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Weekly, so newly published vulnerabilities surface even when nothing is
+  # pushed.
+  schedule:
+    - cron: "17 5 * * 1"
+
+permissions: {}
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+      - name: Install golangci-lint
+        # A pinned release binary, verified by its SHA-256, rather than
+        # golangci/golangci-lint-action, which is not by GitHub or a verified
+        # creator. Keep the version in sync with CONTRIBUTING.md.
+        env:
+          VERSION: 2.14.0
+          SHA256: ab90aeb7b066f92a33415b638a50fe5344bbb75a0d32ad30cc248d88f81032ab
+        run: |
+          set -euo pipefail
+          name="golangci-lint-$VERSION-linux-amd64"
+          curl -sSfL -o "$RUNNER_TEMP/$name.tar.gz" \
+            "https://github.com/golangci/golangci-lint/releases/download/v$VERSION/$name.tar.gz"
+          echo "$SHA256  $RUNNER_TEMP/$name.tar.gz" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/$name.tar.gz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/$name" >> "$GITHUB_PATH"
+      - run: golangci-lint run ./...
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+      # The module has no dependencies, so this checks the calls it makes into
+      # the standard library of the Go version running the scan.
+      - run: govulncheck ./...
+
+  test:
+    name: test (Go ${{ matrix.go }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        go: [stable, "1.24"] # keep in sync with the go directive in go.mod
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ matrix.go }}
+      # The tests against the real ~594 MB dataset skip themselves here.
+      - run: go test -race ./...
+      # A short run of each fuzz target, on top of their seed corpus above.
+      - run: go test -run '^$' -fuzz '^FuzzNew$' -fuzztime 30s .
+      - run: go test -run '^$' -fuzz '^FuzzProject$' -fuzztime 10s .
